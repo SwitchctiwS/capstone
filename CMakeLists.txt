@@ -1,0 +1,6 @@
+cmake_minimum_required(VERSION 2.8)
+project( CompanionBot )
+find_package( OpenCV REQUIRED )
+include_directories( ${OpenCV_INCLUDE_DIRS} )
+add_executable( CompBot src/main.cpp )
+target_link_libraries( CompBot ${OpenCV_LIBS} )
