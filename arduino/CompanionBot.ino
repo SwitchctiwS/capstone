@@ -125,13 +125,15 @@ void loop() {
     }
     */
 
+
+
     // Reads US value
     usCenterDistance = analogRead(usCenterPin);
-    usLeftDistance = analogRead(usLeftPin);
-    usRightDistance = analogRead(usRightPin);
+    //usLeftDistance = analogRead(usLeftPin);
+    //usRightDistance = analogRead(usRightPin);
 
     // Moving logic
-    moveBot(usCenterDistance, isBlockDetected);
+    moveBot(usCenterDistance, isBlockDetected, usLeftDistance, usRightDistance);
 
     delay(5); // Shorten if possible. Need to give analogWrite room to "breathe".
 }
@@ -182,14 +184,14 @@ void moveBot(int usCenterDistance, int isBlockDetected, int usLeftDistance, int 
 
     int objectPosition = usDetect(usLeftDistance, usRightDistance);
     
-    if (usDistance < US_MIN_DIST) {
+    if (usCenterDistance < US_MIN_DIST) {
         moveWheels(0, 0, 0, 0);
     } else if (!isBlockDetected) {
         moveWheels(0, 0, 0, 0);
-    } else if (usDistance > US_MAX_DIST) {
+    } else if (usCenterDistance > US_MAX_DIST) {
         if (isBlockDetected) {
             if (pixy.blocks[0].x > PIXY_WINDOW_LOW && pixy.blocks[0].x < PIXY_WINDOW_HIGH)  {
-               moveWheels(1, 1, 127, 127);
+               moveWheels(1, 1, 255, 255);
             } else if (pixy.blocks[0].x > PIXY_WINDOW_HIGH / 2) {
                moveWheels(1, 1, 127, 255);
             } else if (pixy.blocks[0].x < PIXY_WINDOW_LOW / 2) {
