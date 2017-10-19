@@ -1,30 +1,33 @@
 #include <SPI.h>
 #include <Pixy.h>
-#include <MPU9250.h>
+#include <NewPing.h>
 #include "CompanionBot.h"
 
 // Pins
+// LED
+int ledPin = 13;
+
 // Motor
 int motorPin1a = 10;
 int motorPin1b = 6;
 int motorPin2a = 9;
 int motorPin2b = 5;
 
-// LED
-int ledPin = 13;
+// Ultrasonic sensors 
+int usCenterPin = 0; // Analog pin
+int usLeftEchoPin = 4;
+int usLeftTrigPin = 2;
+int usRightEchoPin = 7;
+int usRightTrigPin = 8;
 
-// Analog
-int usCenterPin = 0;
-int usLeftPin = 1;
-int usRightPin = 2;
-
-// Variables
+// Constructors 
 Pixy pixy;
-MPU9250 imu;
 uint16_t blocks;
+NewPing usLeft(usLeftTrigPin, usLeftEchoPin);
+NewPing usRight(usRightTrigPin, usRightEchoPin);
 
+// for debug
 int incomingByte = 0;
-int analogVal = 0;
 
 void setup() {
     pinMode(motorPin1a, OUTPUT);
@@ -34,108 +37,58 @@ void setup() {
 
     pinMode(ledPin, OUTPUT);
       
-    Wire.begin();
     Serial.begin(9600);
     
+    // DEBUG
     Serial.println("Starting...");
 
-    /*IMU setup code
-    // Read the WHO_AM_I register, this is a good test of communication
-    byte c = imu.readByte(MPU9250_ADDRESS, WHO_AM_I_MPU9250);
-    Serial.print("MPU9250 "); Serial.print("I AM "); Serial.print(c, HEX);
-    Serial.print(" I should be "); Serial.println(0x71, HEX);
-    if (c == 0x71) {
-      Serial.println("MPU9250 is online...");
-
-      // Start by performing self test and reporting values
-      imu.MPU9250SelfTest(imu.SelfTest);
-      Serial.print("x-axis self test: acceleration trim within : ");
-      Serial.print(imu.SelfTest[0],1); Serial.println("% of factory value");
-      Serial.print("y-axis self test: acceleration trim within : ");
-      Serial.print(imu.SelfTest[1],1); Serial.println("% of factory value");
-      Serial.print("z-axis self test: acceleration trim within : ");
-      Serial.print(imu.SelfTest[2],1); Serial.println("% of factory value");
-      Serial.print("x-axis self test: gyration trim within : ");
-      Serial.print(imu.SelfTest[3],1); Serial.println("% of factory value");
-      Serial.print("y-axis self test: gyration trim within : ");
-      Serial.print(imu.SelfTest[4],1); Serial.println("% of factory value");
-      Serial.print("z-axis self test: gyration trim within : ");
-      Serial.print(imu.SelfTest[5],1); Serial.println("% of factory value");
-  
-      // Calibrate gyro and accelerometers, load biases in bias registers
-      imu.calibrateMPU9250(imu.gyroBias, imu.accelBias);
-  
-      imu.initMPU9250();
-      // Initialize device for active mode read of acclerometer, gyroscope, and
-      // temperature
-      Serial.println("MPU9250 initialized for active data mode....");
-  
-      // Read the WHO_AM_I register of the magnetometer, this is a good test of
-      // communication
-      byte d = imu.readByte(AK8963_ADDRESS, WHO_AM_I_AK8963);
-      Serial.print("AK8963 "); Serial.print("I AM "); Serial.print(d, HEX);
-      Serial.print(" I should be "); Serial.println(0x48, HEX);
-  
-      // Get magnetometer calibration from AK8963 ROM
-      imu.initAK8963(imu.magCalibration);
-      // Initialize device for active mode read of magnetometer
-      Serial.println("AK8963 initialized for active data mode....");
-      if (SERIAL_DEBUG_OUTPUT) {
-        //  Serial.println("Calibration values: ");
-        Serial.print("X-Axis sensitivity adjustment value ");
-        Serial.println(imu.magCalibration[0], 2);
-        Serial.print("Y-Axis sensitivity adjustment value ");
-        Serial.println(imu.magCalibration[1], 2);
-        Serial.print("Z-Axis sensitivity adjustment value ");
-        Serial.println(imu.magCalibration[2], 2);
-      }
-    } else {
-      Serial.print("Could not connect to MPU9250: 0x");
-      Serial.println(c, HEX);
-      while(1) ; // Loop forever if communication doesn't happen
-    }
-*/
-    
     pixy.init();
 }
 
 void loop() {
     blocks = pixy.getBlocks();
-
-    // Arduino reads blocks faster than Pixy can transmit, so this set it so that if the colour code isn't visable for more than 10 frames, it sets isBlockDetected = false
-    static int i = 0;
-    static int usCenterDistance = 0, usRightDistance = 0, usLeftDistance = 0; // Note: The Arduino and US have the SAME amount of ADC bits, so it's fairly inaccurate
-    static bool isBlockDetected = false;
-
-    if (!blocks) {
-        i++;
-    } else {
-        i = 0;
-        isBlockDetected = true;
-    }
-
-    if (i > 10) { // Can change 10 to something else. Small is better. Discovered empirically.
-        isBlockDetected = false;
-    }
+    static int usCenterDistance = 0, usRightDistance = 0, usLeftDistance = 0; 
+    // Note: The Arduino and US have the SAME amount of ADC bits, so it's fairly inaccurate
 
     /*
-    // Gets commands from Serial. DEBUG.
+    // Gets commands from Serial 
+    // FOR DEBUG.
     if (Serial.available() > 0) {
          incomingByte = Serial.read();
     }
     */
 
-
-
-    // Reads US value
+    // Reads US value from EZ-something
     usCenterDistance = analogRead(usCenterPin);
-    //usLeftDistance = analogRead(usLeftPin);
-    //usRightDistance = analogRead(usRightPin);
+
+    // Reads value from HC-SR04 ultrasonic sensor
+    usLeftDistance = usLeft.ping_cm();
+    usRightDistance = usRight.ping_cm();
 
     // Moving logic
-    moveBot(usCenterDistance, isBlockDetected, usLeftDistance, usRightDistance);
+    moveBot(usCenterDistance, blockDetection(), usLeftDistance, usRightDistance);
+
 
     delay(5); // Shorten if possible. Need to give analogWrite room to "breathe".
+}
+
+bool blockDetection(void) {
+    // Arduino reads blocks faster than Pixy can transmit, so this set it so that if the colour code isn't visable for more than 10 frames (count value), it sets isBlockDetected = false
+    static int count = 0;
+    static bool isBlockDetected = false;
+
+    if (!blocks) { // global variable
+        count++;
+    } else {
+        count = 0;
+        isBlockDetected = true;
+    }
+
+    if (count > 10) { // Can change 10 to something else. Small is better. Discovered empirically.
+        isBlockDetected = false;
+    }
+
+    return isBlockDetected;
 }
 
 // Moves wheels/motors with PWM
@@ -182,27 +135,25 @@ void moveBot(int usCenterDistance, int isBlockDetected, int usLeftDistance, int 
     // Distance determines how fast it should move
     // Distance of 0 is stop, negative distance is reverse
 
-    int objectPosition = usDetect(usLeftDistance, usRightDistance);
+    int obstaclePosition = usDetect(usLeftDistance, usRightDistance);
     
-    if (usCenterDistance < US_MIN_DIST) {
-        moveWheels(0, 0, 0, 0);
-    } else if (!isBlockDetected) {
+    if ((!isBlockDetected) || (usCenterDistance < US_MIN_DIST) || (usLeftDistance < US_MIN_DIST) || (usRightDistance < US_MIN_DIST)) {
         moveWheels(0, 0, 0, 0);
     } else if (usCenterDistance > US_MAX_DIST) {
-        if (isBlockDetected) {
-            if (pixy.blocks[0].x > PIXY_WINDOW_LOW && pixy.blocks[0].x < PIXY_WINDOW_HIGH)  {
-               moveWheels(1, 1, 255, 255);
-            } else if (pixy.blocks[0].x > PIXY_WINDOW_HIGH / 2) {
-               moveWheels(1, 1, 127, 255);
-            } else if (pixy.blocks[0].x < PIXY_WINDOW_LOW / 2) {
-               moveWheels(1, 1, 255, 127);
+        if (pixy.blocks[0].x > PIXY_WINDOW_LOW && pixy.blocks[0].x < PIXY_WINDOW_HIGH)  {
+            if (obstaclePosition == -1) {
+                moveWheels(1, 1, 127, 255);
+            } else if (obstaclePosition == 1) {
+                moveWheels(1, 1, 255, 127);
+            } else {
+                moveWheels(1, 1, 255, 255);
             }
+        } else if (pixy.blocks[0].x > PIXY_WINDOW_HIGH) {
+            moveWheels(1, 1, 127, 255);
+        } else if (pixy.blocks[0].x < PIXY_WINDOW_LOW) {
+            moveWheels(1, 1, 255, 127);
         }
-    }
-}
-
-float pixyVel(int deltaPx, int deltaTime) {
-   return (float)((deltaPx / deltaTime) * PX_PER_METER);
+    } 
 }
 
 int usDetect(uint16_t usLeftDistance, uint16_t usRightDistance) {
@@ -218,12 +169,6 @@ int usDetect(uint16_t usLeftDistance, uint16_t usRightDistance) {
     } else {
         return 0;
     }
-}
-
-uint16_t getUsDist() {
-    // Input capture/analog voltage/UART
-    // Ideally use PWM (least noise), then analog, then UART (slow)
-    return 0; // dummy value to make compiler not kms
 }
 
 // Estimate based on area of CC
