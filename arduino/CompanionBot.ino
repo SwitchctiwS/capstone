@@ -58,15 +58,24 @@ void loop() {
     }
     */
 
+    /*
     // Reads US value from EZ-something
     usCenterDistance = analogRead(usCenterPin);
+    */
 
     // Reads value from HC-SR04 ultrasonic sensor
     usLeftDistance = usLeft.ping_cm();
     usRightDistance = usRight.ping_cm();
 
+
+    //DEBUG
+    Serial.print(usLeftDistance);
+    Serial.print("\t");
+    Serial.print(usRightDistance);
+    Serial.print("\t");
+
     // Moving logic
-    moveBot(usCenterDistance, blockDetection(), usLeftDistance, usRightDistance);
+    moveBot(usLeftDistance, usRightDistance);
 
 
     delay(5); // Shorten if possible. Need to give analogWrite room to "breathe".
@@ -84,7 +93,7 @@ bool blockDetection(void) {
         isBlockDetected = true;
     }
 
-    if (count > 10) { // Can change 10 to something else. Small is better. Discovered empirically.
+    if (count > MAX_COUNT) { // Can change 10 to something else. Small is better. Discovered empirically.
         isBlockDetected = false;
     }
 
@@ -129,46 +138,156 @@ void moveWheels(int wheelLeftDirection, int wheelRightDirection, int pwmLeft, in
 }
 
 // May want to make a pot that adjusts the max PWM for each motor (connected to analog pins)
-void moveBot(int usCenterDistance, int isBlockDetected, int usLeftDistance, int usRightDistance) {
+void moveBot(int usLeftDistance, int usRightDistance) {
     // Move wheels until bot is in center of object 
     // (with slight offset accounting for distance from center to person's leg).
     // Distance determines how fast it should move
     // Distance of 0 is stop, negative distance is reverse
 
-    int obstaclePosition = usDetect(usLeftDistance, usRightDistance);
+    bool isBlockDetected = blockDetection();
+    bool isObstacleDetected = usObstacleDetected(usLeftDistance, usRightDistance);
+    int obstaclePosition= usObstaclePosition(usLeftDistance, usRightDistance);
     
+    if ((!isBlockDetected) || (isObstacleDetected)) {
+        moveWheels(0, 0, 0, 0);
+
+        //DEBUG
+        Serial.println("Stopped");
+
+    } else {
+        if (pixy.blocks[0].x > PIXY_WINDOW_HIGH) {
+            moveWheels(1, 1, 127, 255);
+
+            //DEBUG
+            Serial.println("Left");
+
+        } else if (pixy.blocks[0].x < PIXY_WINDOW_LOW) {
+            moveWheels(1, 1, 255, 127);
+
+            //DEBUG
+            Serial.println("Right");
+
+        } else {
+            if (obstaclePosition == -1) {
+                moveWheels(1, 1, 127, 255);
+
+                //DEBUG
+                Serial.println("UsLeft");
+
+            } else if (obstaclePosition == 1) {
+                moveWheels(1, 1, 255, 127);
+
+                //DEBUG
+                Serial.println("UsRight");
+
+            } else {
+                moveWheels(1, 1, 255, 255);
+
+                //DEBUG
+                Serial.println("Forward");
+
+            }
+        }
+    }
+    /*
     if ((!isBlockDetected) || (usCenterDistance < US_MIN_DIST) || (usLeftDistance < US_MIN_DIST) || (usRightDistance < US_MIN_DIST)) {
         moveWheels(0, 0, 0, 0);
+
+        //DEBUG
+        Serial.println("Stopped");
+
     } else if (usCenterDistance > US_MAX_DIST) {
         if (pixy.blocks[0].x > PIXY_WINDOW_LOW && pixy.blocks[0].x < PIXY_WINDOW_HIGH)  {
             if (obstaclePosition == -1) {
                 moveWheels(1, 1, 127, 255);
+
+                //DEBUG
+                Serial.println("USLeft");
+
             } else if (obstaclePosition == 1) {
                 moveWheels(1, 1, 255, 127);
+
+                //DEBUG
+                Serial.println("USRight");
+
             } else {
                 moveWheels(1, 1, 255, 255);
+
+                //debug
+                Serial.println("Forward");
             }
         } else if (pixy.blocks[0].x > PIXY_WINDOW_HIGH) {
             moveWheels(1, 1, 127, 255);
+
+            //DEBUG
+            Serial.println("Left");
+
         } else if (pixy.blocks[0].x < PIXY_WINDOW_LOW) {
             moveWheels(1, 1, 255, 127);
+
+            //DEBUG
+            Serial.println("Right");
+
         }
     } 
+    */
 }
 
-int usDetect(uint16_t usLeftDistance, uint16_t usRightDistance) {
+bool usObstacleDetected(uint16_t usLeftDistance, uint16_t usRightDistance) {
+    // returns:
+    //  true -> good
+    //  false -> bad
+    static int count = 0;
+    static bool isObstacleDetected = true;
+
+    if ((usLeftDistance < US_LEFT_MIN_DIST) || (usRightDistance < US_RIGHT_MIN_DIST)) {
+        count++;
+    } else {
+        count = 0;
+        isObstacleDetected = false;
+    }
+    
+    if (count > MAX_COUNT) {
+        isObstacleDetected = true;
+    }
+
+    return isObstacleDetected;
+}
+
+int usObstaclePosition (uint16_t usLeftDistance, uint16_t usRightDistance) {
     // returns:
     //   0 -> person in center
     //  -1 -> person on left
     //  +1 -> person on right
+
+    static int leftCount = 0;
+    static int rightCount = 0;
+    static int middleCount = 0;
+    static int usObstaclePosition = 0; 
     
-    if (usLeftDistance < usRightDistance) {
-        return -1;
-    } else if (usRightDistance < usLeftDistance) {
-        return 1;
+    if (usLeftDistance < (usRightDistance + US_LEFT_DIFFERENTIAL)) {
+        leftCount++;
+        rightCount = 0;
+        middleCount = 0;
+    } else if (usRightDistance < (usLeftDistance + US_RIGHT_DIFFERENTIAL)) {
+        rightCount++;
+        leftCount = 0;
+        middleCount = 0;
     } else {
-        return 0;
+        middleCount++;
+        leftCount = 0;
+        rightCount = 0;
     }
+
+    if (leftCount > MAX_COUNT) {
+        usObstaclePosition = -1; 
+    } else if (rightCount > MAX_COUNT) {
+        usObstaclePosition = 1;
+    } else if (middleCount > MAX_COUNT) {
+        usObstaclePosition = 0;
+    }
+
+    return usObstaclePosition;
 }
 
 // Estimate based on area of CC

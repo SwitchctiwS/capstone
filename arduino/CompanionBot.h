@@ -6,6 +6,18 @@
 #define US_MIN_DIST 30  // In cm, found through testing
 #define US_MAX_DIST 40 // "    "
 
+#define US_RIGHT_MIN_DIST 40
+#define US_RIGHT_MAX_DIST 100
+
+#define US_LEFT_MIN_DIST 40
+#define US_LEFT_MAX_DIST 100
+
+#define US_RIGHT_DIFFERENTIAL 20
+#define US_LEFT_DIFFERENTIAL 20
+
+// Counts
+#define MAX_COUNT 10
+
 #define DIST_HYST 10 // +-Value determined through testing because Pixy is less accurate than US
                      
 // Movement
