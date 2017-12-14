@@ -3,9 +3,17 @@
 #include <NewPing.h>
 #include "CompanionBot.h"
 
+//Serial debuging
+// NOTE: Cannot have serial debugging and Bluetooth on at same time 
+bool isSerialDebugEnabled = false; // Set to false to disable
+
+// Bluetooth debuging
+// NOTE: Cannot have serial debugging and Bluetooth on at same time 
+bool isBluetoothEnabled = true;
+
 // Pins
-// LED
-int ledPin = 13;
+// Limit Switch
+int limPin = 13; // See if this pin works, use pulldown res
 
 // Motor
 int motorPin1a = 10;
@@ -29,40 +37,58 @@ NewPing usRight(usRightTrigPin, usRightEchoPin);
 int incomingByte = 0;
 
 void setup() {
+    // Hangs in loop because can't have both
+    if (isBluetoothEnabled && isSerialDebugEnabled) {
+        while (true);
+    }
+
+    // Motor pins
     pinMode(motorPin1a, OUTPUT);
     pinMode(motorPin1b, OUTPUT);
     pinMode(motorPin2a, OUTPUT);
     pinMode(motorPin2b, OUTPUT);
 
-    Serial.begin(9600);
-    
-    // DEBUG
-    Serial.println("Starting...");
+    // Limit switch interupt
+    pinMode(limPin, INPUT);
 
+    // Serial for DEBUG
+    if (isSerialDebugEnabled) {
+        Serial.begin(9600);
+        Serial.println("Starting...");
+    }
+
+    // Pixy
     pixy.init();
 }
 
 void loop() {
     blocks = pixy.getBlocks();
     static int usRightDistance = 0, usLeftDistance = 0; 
+    int limSwitch;
 
     // Reads value from HC-SR04 ultrasonic sensor
     usLeftDistance = usLeft.ping_cm();
     usRightDistance = usRight.ping_cm();
 
+    // Limit Switch
+    limSwitch = digitalRead(limPin);
 
     //DEBUG
-    Serial.print(usLeftDistance);
-    Serial.print("\t");
-    Serial.print(usRightDistance);
-    Serial.print("\t");
+    if (isSerialDebugEnabled) {
+        Serial.print(usLeftDistance);
+        Serial.print("\t");
+        Serial.print(usRightDistance);
+        Serial.print("\t");
+        Serial.print(limSwitch);
+        Serial.print("\t");
+    }
 
     // Moving logic
-    moveBot(usLeftDistance, usRightDistance);
-
+    moveBot(usLeftDistance, usRightDistance, limSwitch);
 
     delay(5); // Shorten if possible. Need to give analogWrite room to "breathe".
 }
+
 
 bool blockDetection(void) {
     // Arduino reads blocks faster than Pixy can transmit, so this set it so that if the colour code isn't visable for more than 10 frames (count value), it sets isBlockDetected = false
@@ -116,16 +142,30 @@ void moveWheels(int wheelLeftDirection, int wheelRightDirection, int pwmLeft, in
         analogWrite(motorPin2a, 0);
         analogWrite(motorPin2b, 0);
     } else {
-        Serial.println("Not a vaild value!");
+        if (isSerialDebugEnabled) {
+            Serial.println("Not a vaild value!");
+        }
     }
 }
 
 // May want to make a pot that adjusts the max PWM for each motor (connected to analog pins)
-void moveBot(int usLeftDistance, int usRightDistance) {
+void moveBot(int usLeftDistance, int usRightDistance, int limSwitch) {
     // Move wheels until bot is in center of object 
-    // (with slight offset accounting for distance from center to person's leg).
+    // (with slight offset accounting for d0stance from center to person's leg).
     // Distance determines how fast it should move
     // Distance of 0 is stop, negative distance is reverse
+
+    // Active high
+    if (limSwitch == HIGH) {
+        moveWheels(0, 0, 0, 0);
+
+        //DEBUG
+        if (isSerialDebugEnabled) {
+            Serial.println("LimStopped");
+        }
+
+        return;
+    }
 
     bool isBlockDetected = blockDetection();
     bool isObstacleDetected = usObstacleDetected(usLeftDistance, usRightDistance);
@@ -135,40 +175,51 @@ void moveBot(int usLeftDistance, int usRightDistance) {
         moveWheels(0, 0, 0, 0);
 
         //DEBUG
-        Serial.println("Stopped");
+        if (isSerialDebugEnabled) {
+            Serial.println("Stopped");
+        }
 
     } else {
         if (pixy.blocks[0].x > PIXY_WINDOW_HIGH) {
             moveWheels(1, 1, 127, 255);
 
             //DEBUG
-            Serial.println("Left");
+            if (isSerialDebugEnabled) {
+                Serial.println("Left");
+            }
 
         } else if (pixy.blocks[0].x < PIXY_WINDOW_LOW) {
             moveWheels(1, 1, 255, 127);
 
             //DEBUG
-            Serial.println("Right");
+            if (isSerialDebugEnabled) {
+                Serial.println("Right");
+            }
 
         } else {
             if (obstaclePosition == -1) {
                 moveWheels(1, 1, 127, 255);
 
                 //DEBUG
-                Serial.println("UsLeft");
+                if (isSerialDebugEnabled) {
+                    Serial.println("UsLeft");
+                }
 
             } else if (obstaclePosition == 1) {
                 moveWheels(1, 1, 255, 127);
 
                 //DEBUG
-                Serial.println("UsRight");
+                if (isSerialDebugEnabled) {
+                    Serial.println("UsRight");
+                }
 
             } else {
                 moveWheels(1, 1, 255, 255);
 
                 //DEBUG
-                Serial.println("Forward");
-
+                if (isSerialDebugEnabled) {
+                    Serial.println("Forward");
+                }
             }
         }
     }
@@ -182,7 +233,7 @@ bool usObstacleDetected(uint16_t usLeftDistance, uint16_t usRightDistance) {
     static int count = 0;
     static bool isObstacleDetected = true;
 
-    if ((usLeftDistance < US_LEFT_MIN_DIST) || (usRightDistance < US_RIGHT_MIN_DIST)) {
+    if (((usLeftDistance < US_LEFT_MIN_DIST) && (usLeftDistance != 0)) || ((usRightDistance < US_RIGHT_MIN_DIST) && (usLeftDistance != 0))) {
         count++;
     } else {
         count = 0;
